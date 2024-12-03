@@ -2,8 +2,8 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Función para mostrar imágenes
 def imshow(img, title=None, cmap='gray'):
+    """Muestra una imagen con Matplotlib."""
     plt.figure()
     plt.imshow(img, cmap=cmap)
     if title:
@@ -11,142 +11,89 @@ def imshow(img, title=None, cmap='gray'):
     plt.axis('off')
     plt.show()
 
-# Función para procesar la imagen y detectar dados
-def detectar_dados(frame, umbral=100, min_area=80, max_area=600):
-    """
-    Detecta dados.
-    """
-    # Aplicar desenfoqe
-    desenfoque = cv2.GaussianBlur(frame, (5, 5), 0)
+def segmentar_dados_por_color(frame):
+    """Segmenta dados rojos traslúcidos en un fondo verdoso."""
+    frame_hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     
-    # Eliminación de ruido y definición de bordes claros
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    frame_bin = cv2.morphologyEx(desenfoque, cv2.MORPH_OPEN, kernel, iterations=2)
+    # Rango de color rojo en HSV
+    lower_red1 = np.array([0, 50, 50])
+    upper_red1 = np.array([10, 255, 255])
+    lower_red2 = np.array([170, 50, 50])
+    upper_red2 = np.array([180, 255, 255])
+
+    # Crear máscaras para tonos rojos
+    mask1 = cv2.inRange(frame_hsv, lower_red1, upper_red1)
+    mask2 = cv2.inRange(frame_hsv, lower_red2, upper_red2)
+    mask = cv2.bitwise_or(mask1, mask2)
+
+    # Aplicar la máscara sobre el frame original
+    resultado = cv2.bitwise_and(frame, frame, mask=mask)
+
+    return mask, resultado
+
+def detectar_dados_segmentados(frame, umbral=100, min_area=80, max_area=600):
+    """Detecta dados usando segmentación de color y detección de contornos."""
+    mask, resultado_segmentado = segmentar_dados_por_color(frame)
+    imshow(mask, title="Máscara de Dados Rojos")
     
-    
-    # Aplicar Canny para detectar bordes
-    canny = cv2.Canny(frame_bin, threshold1=40, threshold2=180)  # Ajusta los umbrales según sea necesario
-    bordes_dilatados = cv2.dilate(canny, None, iterations=15)
-    
-    # Detección de contornos en la imagen de Canny
+    # Aplicar Canny sobre la máscara
+    canny = cv2.Canny(mask, 40, 180)
+    bordes_dilatados = cv2.dilate(canny, None, iterations=5)
+
     contours, _ = cv2.findContours(bordes_dilatados, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    # Convertir el frame original a BGR para dibujar contornos
-    output_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+    output_frame = frame.copy()
     dados = []
 
-    # Dibujar y filtrar contornos
     for contour in contours:
         area = cv2.contourArea(contour)
         if min_area <= area <= max_area:
             x, y, w, h = cv2.boundingRect(contour)
-            
-            # Expandir ROI para incluir bordes cercanos
-            margen_x = int(0.2 * w)
-            margen_y = int(0.2 * h)
-            x = max(x - margen_x, 0)
-            y = max(y - margen_y, 0)
-            w = w + 2 * margen_x
-            h = h + 2 * margen_y
-            
-            # Añadir a la lista de dados
             dados.append((x, y, w, h))
-            cv2.rectangle(output_frame, (x, y), (x + w, y + h), (0, 255, 0), 1)
+            cv2.rectangle(output_frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
-    # Mostrar imagen con bordes detectados por Canny (opcional)
-    imshow(canny, title="Bordes detectados con Canny")
-
+    imshow(output_frame, title="Dados Detectados con Segmentación")
     return output_frame, dados
 
-
-# Función para contar puntos en los dados
 def contar_puntos(frame_bin, dados):
-    """
-    Cuenta puntos en cada dado detectado.
-    """
+    """Cuenta puntos en cada dado detectado."""
     puntajes = {}
-    puntaje_total = 0
-
     for i, (x, y, w, h) in enumerate(dados, 1):
-        # Recorte del ROI del dado
         roi = frame_bin[y:y + h, x:x + w]
-
-        # Detección de círculos usando HoughCircles
         circles = cv2.HoughCircles(roi, cv2.HOUGH_GRADIENT, dp=1.2, minDist=10, param1=50, param2=15, minRadius=5, maxRadius=15)
-        puntos = 0
+        puntajes[f"Dado {i}"] = len(circles[0]) if circles is not None else 0
+    return puntajes
 
-        if circles is not None:
-            circles = np.round(circles[0, :]).astype("int")
-            puntos = len(circles)
-
-        puntajes[f"Dado {i}"] = puntos
-        puntaje_total += puntos
-
-    return puntajes, puntaje_total
-
-# Función principal para procesar un video
-# Función principal para procesar un video con detección de movimiento
 def procesar_video(video_path, movement_threshold=30):
-    """
-    Procesa un video para detectar dados y contar sus puntos, asegurándose
-    de que estén quietos utilizando comparación de frames consecutivos.
-    """
+    """Procesa un video detectando dados quietos y contando sus puntos."""
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print("Error al abrir el video.")
         return
 
-    # Variables para almacenar frames consecutivos
-    prev_frame = None
-    current_frame = None
-    next_frame = None
+    prev_frame, current_frame, next_frame = None, None, None
 
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
-        
-        # Convertir el frame actual a escala de grises
+
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        prev_frame, current_frame, next_frame = current_frame, next_frame, frame_gray
 
-        # Actualizar frames consecutivos
-        prev_frame = current_frame
-        current_frame = next_frame
-        next_frame = frame_gray
-
-        # Comienza a comparar frames solo si hay tres consecutivos
         if prev_frame is not None and current_frame is not None:
-            # Calcular diferencias entre los frames
-            diff1 = cv2.absdiff(prev_frame, current_frame)
-            diff2 = cv2.absdiff(current_frame, next_frame)
-
-            # Comprobar si las diferencias están por debajo del umbral
+            diff1, diff2 = cv2.absdiff(prev_frame, current_frame), cv2.absdiff(current_frame, next_frame)
             if np.max(diff1) < movement_threshold and np.max(diff2) < movement_threshold:
                 print("Dados quietos detectados. Procesando frame...")
-
-                # Detectar dados en el frame actual
-                frame_dados, dados = detectar_dados(current_frame)
-
-                # Mostrar los dados detectados
-                imshow(frame_dados, title="Dados Detectados", cmap=None)
-
-                # Contar puntos en los dados
-                _, frame_bin = cv2.threshold(current_frame, thresh=85, maxval=255, type=cv2.THRESH_BINARY_INV)
-                puntajes, puntaje_total = contar_puntos(frame_bin, dados)
-
-                # Mostrar resultados
-                print("Resultados de los dados:")
-                for dado, puntos in puntajes.items():
-                    print(f"{dado}: {puntos} puntos")
-                print(f"Puntaje total: {puntaje_total}")
                 
-                break  # Detenemos el procesamiento después de encontrar los dados quietos
+                frame_dados, dados = detectar_dados_segmentados(frame)
+                imshow(frame_dados, title="Dados Detectados con Segmentación", cmap=None)
+
+                _, frame_bin = cv2.threshold(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), 85, 255, cv2.THRESH_BINARY_INV)
+                puntajes = contar_puntos(frame_bin, dados)
+                print("Resultados de los dados:", puntajes)
+                break
 
     cap.release()
 
-
-# Ruta del video
-video_path = "videos//tirada_1.mp4"
-
-# Procesar el video
-procesar_video(video_path)
+# Procesar video
+procesar_video("tirada_4.mp4")
