@@ -146,7 +146,7 @@ def procesar_video(video_path, movement_threshold=30):
 
 
 # Ruta del video
-video_path = "tirada_1.mp4"
+video_path = "videos//tirada_1.mp4"
 
 # Procesar el video
 procesar_video(video_path)
