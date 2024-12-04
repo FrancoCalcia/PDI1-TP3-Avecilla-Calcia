@@ -54,14 +54,69 @@ def comparar_contornos(contours_prev, contours_current, umbral_area=45):
         return True  # Los dados están quietos
     return False  # Los dados están en movimiento
 
-def recortar_dados(frame, contours, min_area=4300, max_area=6400):
-    """Recorta y muestra los dados basados en contornos dentro de un rango de área."""
+def contar_caras_dado(dado_recortado):
+    """
+    Cuenta las caras visibles de un dado en un recorte dado.
+    1. Convierte a escala de grises.
+    2. Aplica Canny para detectar bordes.
+    3. Utiliza la Transformada de Hough para detectar círculos.
+    """
+    # Convertir a escala de grises
+    gray = cv2.cvtColor(dado_recortado, cv2.COLOR_BGR2GRAY)
+    #imshow(gray)
+   
+    # Aplicar desenfoque para mejorar la detección de bordes
+    blurred = cv2.GaussianBlur(gray, (9, 9), 3)
+    #imshow(blurred)
+   
+    # Aplicar Canny para detectar bordes
+    edges = cv2.Canny(blurred, 30, 150)
+    imshow(edges)
+    # Aplicar la Transformada de Hough para detectar círculos
+    circles = cv2.HoughCircles(
+        edges,
+        cv2.HOUGH_GRADIENT,
+        dp=1.2,         # Resolución inversa del acumulador
+        minDist=8,     # Distancia mínima entre los centros de los círculos
+        param1=25,      # Umbral superior para Canny
+        param2=10,      # Umbral del acumulador para considerar un círculo válido
+        minRadius=5,   # Radio mínimo esperado
+        maxRadius=8    # Radio máximo esperado
+    )
+
+    # Contar los círculos detectados
+    if circles is not None:
+        circles = np.uint16(np.around(circles))
+        for i in circles[0, :]:
+            # Dibujar los círculos detectados (opcional)
+            cv2.circle(dado_recortado, (i[0], i[1]), i[2], (0, 255, 0), 2)
+
+        # Mostrar la imagen con círculos detectados
+        imshow(dado_recortado, title=f"{len(circles[0])} caras detectadas")
+        return len(circles[0])
+    
+    # Si no se detectan círculos, el dado tiene 0 caras visibles
+    return 0
+
+def recortar_y_contar_dados(frame, contours, min_area=4300, max_area=6400):
+    """
+    Recorta los dados basados en contornos dentro de un rango de área
+    y cuenta las caras visibles de cada dado.
+    """
+    resultados = []
     for contour in contours:
         area = cv2.contourArea(contour)
         if min_area <= area <= max_area:
             x, y, w, h = cv2.boundingRect(contour)
             dado_recortado = frame[y:y+h, x:x+w]
-            imshow(dado_recortado, title=f"Dado recortado (Área: {area:.2f})")
+            
+            # Contar caras visibles
+            caras = contar_caras_dado(dado_recortado)
+            resultados.append((area, caras))
+
+            print(f"Dado con área {area:.2f}: {caras} caras detectadas")
+    return resultados
+
 
 def procesar_video_para_quietud(video_path, tiempo_espera=1.58):
     """Procesa un video y detecta el segundo exacto en que los dados se quedan quietos."""
@@ -95,19 +150,16 @@ def procesar_video_para_quietud(video_path, tiempo_espera=1.58):
                 print(f"Dados quietos detectados en el segundo: {current_second:.2f}")
                 
                 # Mostrar el frame donde se detecta la quietud
-                imshow(frame, title=f"Dados quietos en el segundo {current_second:.2f}")
-
-                # Visualización adicional de la máscara de color rojo segmentado
-                mask = segmentar_dados_por_color(frame)
-                imshow(mask, title="Máscara de color rojo")
+                #imshow(frame, title=f"Dados quietos en el segundo {current_second:.2f}")
 
                 # Dibujar los contornos en el frame
                 frame_contornos = frame.copy()
                 cv2.drawContours(frame_contornos, contours_current, -1, (0, 255, 0), 2)
-                imshow(frame_contornos, title="Contornos detectados")
+                #imshow(frame_contornos, title="Contornos detectados")
 
-                # Recortar los dados basados en el área
-                recortar_dados(frame, contours_current)
+                # Recortar los dados y contar caras
+                resultados = recortar_y_contar_dados(frame, contours_current)
+                print("Resultados finales:", resultados)
 
                 break  # Salimos después de detectar la quietud
 
@@ -119,3 +171,4 @@ def procesar_video_para_quietud(video_path, tiempo_espera=1.58):
 tiradas = [1, 2, 3, 4]
 for tirada in tiradas:
     procesar_video_para_quietud(f"videos/tirada_{tirada}.mp4")
+
