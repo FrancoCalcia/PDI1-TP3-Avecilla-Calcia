@@ -54,6 +54,15 @@ def comparar_contornos(contours_prev, contours_current, umbral_area=45):
         return True  # Los dados están quietos
     return False  # Los dados están en movimiento
 
+def recortar_dados(frame, contours, min_area=4300, max_area=6400):
+    """Recorta y muestra los dados basados en contornos dentro de un rango de área."""
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if min_area <= area <= max_area:
+            x, y, w, h = cv2.boundingRect(contour)
+            dado_recortado = frame[y:y+h, x:x+w]
+            imshow(dado_recortado, title=f"Dado recortado (Área: {area:.2f})")
+
 def procesar_video_para_quietud(video_path, tiempo_espera=1.58):
     """Procesa un video y detecta el segundo exacto en que los dados se quedan quietos."""
     cap = cv2.VideoCapture(video_path)
@@ -97,6 +106,9 @@ def procesar_video_para_quietud(video_path, tiempo_espera=1.58):
                 cv2.drawContours(frame_contornos, contours_current, -1, (0, 255, 0), 2)
                 imshow(frame_contornos, title="Contornos detectados")
 
+                # Recortar los dados basados en el área
+                recortar_dados(frame, contours_current)
+
                 break  # Salimos después de detectar la quietud
 
         prev_frame = frame
@@ -106,4 +118,4 @@ def procesar_video_para_quietud(video_path, tiempo_espera=1.58):
 
 tiradas = [1, 2, 3, 4]
 for tirada in tiradas:
-  procesar_video_para_quietud(f"tirada_{tirada}.mp4")
+    procesar_video_para_quietud(f"videos/tirada_{tirada}.mp4")
