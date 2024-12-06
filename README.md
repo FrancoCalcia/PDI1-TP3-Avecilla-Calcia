@@ -40,3 +40,10 @@ Este proyecto utiliza técnicas avanzadas de procesamiento de imágenes y visió
    python dados.py
 2. El script procesará el video, detectará los dados y mostrará las caras visibles en cada frame.
 3. El script guardará el video con la detección de los dados en la carpeta `videos`
+
+## **Nota**
+Si clonar directamente no funciona, descarga el repositorio como un archivo ZIP desde GitHub:
+
+1. Ve a https://github.com/FrancoCalcia/PDI1-TP3-Avecilla-Calcia en tu navegador.
+2. Haz clic en el botón verde Code y selecciona Download ZIP.
+3. Extrae los archivos en tu máquina.
