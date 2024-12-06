@@ -1,4 +1,4 @@
-# **Detección y Reconocimiento de Caras Visibles en Dados**
+# **Detección y reconocimiento de caras de dados en videos**
 
 ## **Descripción del proyecto**
 
